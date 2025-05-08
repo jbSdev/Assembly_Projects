@@ -4,7 +4,6 @@ RISC-V, x86 and x86-64 projects made by me as part of the ECOAR (Computer Archit
 
 The exercise given is finding image markers in a .bmp file.
 
-Example markers:
-![Example markers](https://galera.ii.pw.edu.pl/~zsz/ecoar/images/find_markers/example_markers.bmp)
+![Example markers](RISC-V_Project/markers.bmp)
 
 The program should load the image, check its correctness and output all positions of marker 1.
