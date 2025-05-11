@@ -9,8 +9,8 @@
 
 .eqv	Img_desc_size	28
 #.eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
-.eqv	IMGMAXSIZE	480
-.eqv	PixelCount	150
+.eqv	IMGMAXSIZE	1840
+.eqv	PixelCount	600
 .eqv	Bmp_marker	0x4D42
 
 .eqv	Header_size	54
@@ -48,7 +48,7 @@
 	
 	mfail:		.asciz "\nReading file error: "
 	errmsg:		.asciz	"\nError: "
-	fname:		.asciz	"../Assembly_projects/RISC-V_Project/u.bmp"	# name of the file to open
+	fname:		.asciz	"../Assembly_projects/RISC-V_Project/test.bmp"	# name of the file to open
 											# it has to be a relative path from the rars executable file, not the .asm file
 	
 	heightText:	.asciz "\nHeight: "
@@ -82,12 +82,12 @@ main:
 	
 	# find black pixels
 	la	a0, ImgDesc
-	jal	findBlack
+	jal	findMarkers
 	
 	# exit
 	la	a0, ImgDesc
 	jal	exitProgram
-	
+
 readFail:	# Reading file error: ...
 	mv	t0, a0
 	li	a7, Sys_PrintString
@@ -210,92 +210,34 @@ printData:
 	lhu	a0, Img_padding(t0)
 	ecall
 	
+	li	a7, Sys_PrintString
+	la	a0, endl
+	ecall
+	
 	ret
 
 #-----------------------------------------------------------------------#
-# returns nothing
-#findFirst:
-#	mv	s11, ra		# save return address
-#	
-#	mv	t5, a0		# save file descriptor
-#	lw	a1, Img_imgdata(t5)
-#	# ptr to base of image data in s0
-#	# (0, 0) -> left bottom corner of image
-#
-#findLoop:
-#	# a1 points to the first color value of a pixel
-#	li	a7, Sys_PrintString
-#	la	a0, endl
-#	ecall
-#	
-#	mv	a0, t5
-#	jal	getPixelValues
-#	jal	nextRight
-#	jal	getPixelValues
-#	jal	nextUp
-#	jal	getPixelValues
-#	
-#	mv	ra, s11
-#	ret
-#
-#getPixelValues:
-#	mv	t6, a0
-#	
-#	lbu	t0, 0(a1)	# B
-#	lbu	t2, 2(a1)	# R
-#	
-#	li	a7, Sys_PrintInt
-#	mv	a0, t0
-#	ecall
-#	li	a7, Sys_PrintString
-#	la	a0, blank
-#	ecall
-#	
-#	li	a7, Sys_PrintInt
-#	mv	a0, t1
-#	ecall
-#	li	a7, Sys_PrintString
-#	la	a0, blank
-#	ecall
-#	
-#	li	a7, Sys_PrintInt
-#	mv	a0, t2
-#	ecall
-#	li	a7, Sys_PrintString
-#	la	a0, endl
-#	ecall
-#	
-#	mv	a0, t6
-#	ret
-#	
-#nextRight:
-#	addi	a1, a1, 3
-#	ret
-#	
-#nextUp:
-#	lhu	a6, Img_bpl(a0)
-#	add	a1, a1, a6
-#	ret 
-#
+# Find markers								#
+# Arguments:								#
+# 	a0 - ptr to file descriptor struct				#
+# Returns:								#
+#	nothing								#
+#	prints to console all found black pixel coords (0, 0) - left top#
+# Internal values:							#
+#	t4  - padding to pixel						#
+#	s3  - marker arm length						#
+#	s4  - image bits per line					#
+#	s5  - image width						#
+#	s6  - row padding						#
+#	s7  - Pixel Count						#
+#	s8  - x counter							#
+#	s9  - y counter							#
+#	s10 - total pixel counter					#
 #-----------------------------------------------------------------------#
-# Arguments:
-# 	a0 - ptr to file descriptor struct
-# Returns:
-#	nothing
-#	prints to console all found black pixel coords (0, 0) - left top
-# Internal values:
-#	t4  - padding to pixel
-#	s4  - image bits per line
-#	s5  - image width
-#	s6  - row padding
-#	s7  - Pixel Count
-#	s8  - x counter
-#	s9  - y counter
-#	s10 - total pixel counter
-#-----------------------------------------------------------------------#
-findBlack:
+findMarkers:
 	mv	s11, ra
 	
+	# load initial values
 	xor	s8, s8, s8
 	xor	s9, s9, s9
 	xor	s10, s10, s10
@@ -303,7 +245,6 @@ findBlack:
 	lhu	s5, Img_width(a0)
 	lhu	s6, Img_padding(a0)
 	li	s7, PixelCount
-	
 	
 	lw	t4, Img_imgdata(a0)
 	lhu	t0, Img_height(a0)
@@ -314,18 +255,10 @@ findBlack:
 	
 findLoop:
 	beq	s10, s7, findEnd	# EOF
-	jal	getPixelValue
+	#jal	getPixelValue
 
-getPixelValue:
-	
-	#add	t1, a1, a1
-	#add	t1, t1, a1	# x offset	 (x * 3)
-	#sub	t2, s6, a2
-	#addi	t2, t2, -1
-	#mul	t0, t2, s4	# y offset	 (y = y * bpl)
-	#add	t0, t0, t1	# t0 - offset of (x, y)
-	#add	t4, t4, t0	# t4 - points to wanted pixel
-	
+#getPixelValue:
+	# check color values
 	lbu	t1, 0(t4)	# Blue
 	bnez	t1, nextPixel
 	lbu	t1, 1(t4)	# Green
@@ -333,8 +266,70 @@ getPixelValue:
 	lbu	t1, 2(t4)	# Red
 	bnez	t1, nextPixel
 	
-	# pixel is black
-#printCoords
+	# pixel is a possible origin of marker
+	# check length of arm to right
+	mv	t5, t4		# origin pixel
+	mv	t6, s8		# x coordinate
+	jal	goRight
+	
+	mv	t5, t4
+	mv	t6, s9		# y coordinate
+	lhu	t3, Img_height(a0)
+	jal	goDown
+	
+	# s1 - length of right marker's arm
+	# s2 - length of left marker's arm
+	#addi	s1, s1, -1
+	#beqz	s1, nextPixel	# if it is a single pixel
+	#addi	s1, s1, 1
+	
+	beq	s1, s2, printCoords
+	j	nextPixel
+	
+goRight:
+	beq	t6, s5, foundLengthRight
+	
+	lbu	t1, 0(t5)	# Blue
+	bnez	t1, foundLengthRight
+	lbu	t1, 1(t5)	# Green
+	bnez	t1, foundLengthRight
+	lbu	t1, 2(t5)	# Red
+	bnez	t1, foundLengthRight
+	
+	addi	t5, t5, 3
+	addi	t6, t6, 1
+	j	goRight
+	
+	
+foundLengthRight:
+	sub	s1, t6, s8	# marker arm length
+	ret
+
+goDown:
+	beq	t6, t3, foundLengthDown
+	lbu	t1, 0(t5)	# Blue
+	bnez	t1, foundLengthDown
+	lbu	t1, 1(t5)	# Green
+	bnez	t1, foundLengthDown
+	lbu	t1, 2(t5)	# Red
+	bnez	t1, foundLengthDown
+	
+	add	t5, t5, s4
+	addi	t6, t6, 1
+	j	goDown
+	
+foundLengthDown:
+	sub	s2, t6, s9
+	ret
+
+#-------------------------------#
+# 	  Print Coords		#
+# Arguments:			#
+#	s8 - x			#
+#	s9 - y			#
+#-------------------------------#
+
+printCoords:
 	mv	t6, a0
 	
 	li	a7, Sys_PrintString
@@ -351,6 +346,14 @@ getPixelValue:
 	
 	li	a7, Sys_PrintInt
 	mv	a0, s9		# y
+	ecall
+	
+	li	a7, Sys_PrintString
+	la	a0, blank	# ' '
+	ecall
+	
+	li	a7, Sys_PrintInt
+	mv	a0, s1		# length
 	ecall
 	
 	mv	a0, t6
