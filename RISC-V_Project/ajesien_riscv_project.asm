@@ -9,11 +9,11 @@
 
 .eqv	Img_desc_size	28
 	# proper image
-#.eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
-#.eqv	PixelCount	76800
+.eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
+.eqv	PixelCount	76800
 	# 30x20
-.eqv	IMGMAXSIZE	1840
-.eqv	PixelCount	600
+#.eqv	IMGMAXSIZE	1840
+#.eqv	PixelCount	600
 .eqv	Bmp_marker	0x4D42
 
 .eqv	Header_size	54
@@ -24,6 +24,7 @@
 # Pixel data
 .eqv	x		0
 .eqv	y		4
+
 
 # System calls
 
@@ -47,12 +48,10 @@
 	.align 2
 	ImgData:	.space IMGMAXSIZE
 	
-	PixelData:	.space 2
-	
 	mfail:		.asciz "\nReading file error: "
 	errmsg:		.asciz	"\nError: "
-	fname:		.asciz	"../Assembly_projects/RISC-V_Project/test.bmp"	# name of the file to open
-											# it has to be a relative path from the rars executable file, not the .asm file
+	fname:		.asciz	"../Assembly_projects/RISC-V_Project/markers_original.bmp"	# name of the file to open
+												# it has to be a relative path from the rars executable file, not the .asm file
 	
 	heightText:	.asciz "\nHeight: "
 	widthText:	.asciz "\nWidth: "
@@ -264,6 +263,7 @@ findLoop:
 	#jal	getPixelValue
 
 #getPixelValue:
+	
 	# check color values
 	lbu	t1, 0(t4)	# Blue
 	bnez	t1, nextPixel
@@ -271,6 +271,8 @@ findLoop:
 	bnez	t1, nextPixel
 	lbu	t1, 2(t4)	# Red
 	bnez	t1, nextPixel
+	
+	jal	checkPrevious
 	
 	# pixel is a possible origin of marker
 	# check length of arm to right
@@ -310,8 +312,10 @@ findLoop:
 	#mv	a5, pc, 4
 	jal	a5, goDiag
 	
-	jal	printCoords
-	j	nextPixel
+	beq	a6, s2, nextPixel	# big square (width = length)
+
+	j	printCoords
+	#j	nextPixel
 	
 	
 goRight:
@@ -360,10 +364,9 @@ foundLengthDown:
 #	s2 - base arm length		#
 #---------------------------------------#
 goDiag:
-	#mv	a5, ra
 	# if border is met, there is no possibility for that marker to be valid
-	beq	t2, s3, nextPixel
-	beq	t3, s5, nextPixel
+	beq	t3, s3, nextPixel	# L/R Border
+	beq	t2, s5, nextPixel	# T/B Border
 	#jal	pp
 	
 	lbu	t1, 0(t5)	# Blue
@@ -390,17 +393,6 @@ goDiag:
 	# s0 and s1 contain found lengths
 	bne	s0, s1, nextPixel	# internal arms not equal
 	
-	#li	a7, Sys_PrintInt
-	#mv	a0, t0
-	#ecall
-	#mv	a0, s0
-	#ecall
-	#mv	a0, s2
-	#ecall
-	#li	a7, Sys_PrintString
-	#la	a0, endl
-	#ecall
-	
 	add	s0, s0, t0		# internal arm should be shorter by current width offset than the base ones
 	bne	s0, s2, nextPixel	# arms not equal to base ones
 	sub	s0, s0, t0
@@ -423,27 +415,30 @@ foundDiag:
 	mv	ra, a5
 	ret
 	
+checkPrevious:
+	# check pixels to left and top of the current pixel
+	# if any are black, that means it the current pixel
+	# is connected to any form of possible marker which
+	# had to be checked previously
+	mv	t5, t4
+	addi	t5, t5, -3	# pixel to the left
+	lbu	t1, 0(t5)
+	beqz	t1, nextPixel
+	lbu	t1, 1(t5)
+	beqz	t1, nextPixel
+	lbu	t1, 2(t5)
+	beqz	t1, nextPixel
 	
-pp:
-	mv	t6, a0
-	li	a7, Sys_PrintInt
-	mv	a0, s8		# x
-	ecall
-	li	a7, Sys_PrintString
-	la	a0, blank	# ' '
-	ecall
-	li	a7, Sys_PrintInt
-	mv	a0, s9		# y
-	ecall
-	li	a7, Sys_PrintString
-	la	a0, blank	# ' '
-	ecall
-	li	a7, Sys_PrintString
-	la	a0, endl	# '\n'
-	ecall
-	mv	a0, t6
+	mv	t5, t4
+	add	t5, t5, s4	# pixel above
+	lbu	t1, 0(t5)
+	beqz	t1, nextPixel
+	lbu	t1, 1(t5)
+	beqz	t1, nextPixel
+	lbu	t1, 2(t5)
+	beqz	t1, nextPixel
+	
 	ret
-	
 #-------------------------------#
 # 	  Print Coords		#
 # Arguments:			#
@@ -480,6 +475,7 @@ printCoords:
 	ecall
 	
 	mv	a0, t6
+	#ret
 	
 nextPixel:
 	addi	s8, s8, 1
