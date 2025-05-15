@@ -6,12 +6,14 @@
 .eqv	Img_height	16
 .eqv	Img_bpl		20	# bits per line
 .eqv	Img_padding	24
+.eqv	Img_pixelcount	28
 
 .eqv	Img_desc_size	28
 	# proper image
 .eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
-.eqv	PixelCount	76800
-	# 30x20
+#.eqv	PixelCount	76800
+
+	# 30x20 test image
 #.eqv	IMGMAXSIZE	1840
 #.eqv	PixelCount	600
 .eqv	Bmp_marker	0x4D42
@@ -51,12 +53,14 @@
 	mfail:		.asciz "\nReading file error: "
 	errmsg:		.asciz	"\nError: "
 	fname:		.asciz	"../Assembly_projects/RISC-V_Project/markers_original.bmp"	# name of the file to open
+	#fname:		.asciz	"../Assembly_projects/RISC-V_Project/test_edit.bmp"	# name of the file to open
 												# it has to be a relative path from the rars executable file, not the .asm file
 	
 	heightText:	.asciz "\nHeight: "
 	widthText:	.asciz "\nWidth: "
 	linesText:	.asciz "\nBites per line: "
 	paddingText:	.asciz "\nRow padding: "
+	pxcountText:	.asciz "\nPixel count: "
 	exitText:	.asciz "\nExiting program..."
 	blank:		.asciz " "
 	endl:		.asciz "\n"
@@ -74,16 +78,15 @@ main:
 	la	t0, ImgData
 	sw	t0, Img_imgdata(a0)
 	
-	
 	# read from the file
 	jal	readBmp
 	bnez	a0, readFail
 	
 	# print image data
-	la	a0, ImgDesc
-	jal	printData
+	#la	a0, ImgDesc
+	#jal	printData
 	
-	# find black pixels
+	# find markers
 	la	a0, ImgDesc
 	jal	findMarkers
 	
@@ -151,12 +154,18 @@ readBmp:
 		slli	a0, a0, 2	# number of bits per line - ((pixels + 3) / 4) * 4
 		sw	a0, Img_bpl(t0)
 		
+		# calculate image padding
 		sub	a0, a0, t2
 		sw	a0, Img_padding(t0)
 		
-		lw	a0, Header_height(a1)
-		sw	a0, Img_height(t0)
+	# save image height
+	lw	a0, Header_height(a1)
+	sw	a0, Img_height(t0)
 		
+	# save amount of pixels
+	lw	a1, Img_width(t0)
+	mul  	a1, a0, a1		# number of pixels = width * height
+	sw	a1, Img_pixelcount(t0)
 	
 	# read image data
 	li	a7, Sys_ReadFile
@@ -214,6 +223,13 @@ printData:
 	ecall
 	
 	li	a7, Sys_PrintString
+	la	a0, pxcountText
+	ecall
+	li	a7, Sys_PrintInt
+	lw	a0, Img_pixelcount(t0)
+	ecall
+	
+	li	a7, Sys_PrintString
 	la	a0, endl
 	ecall
 	
@@ -227,6 +243,7 @@ printData:
 #	nothing								#
 #	prints to console all found black pixel coords (0, 0) - left top#
 # Internal values:							#
+#	a6  - marker arm width
 #	t4  - padding to pixel						#
 #	s2  - marker arm length						#
 #	s3  - image height						#
@@ -246,7 +263,8 @@ findMarkers:
 	lhu	s4, Img_bpl(a0)
 	lhu	s5, Img_width(a0)
 	lhu	s6, Img_padding(a0)
-	li	s7, PixelCount
+	#li	s7, PixelCount
+	lw	s7, Img_pixelcount(a0)
 	xor	s8, s8, s8
 	xor	s9, s9, s9
 	xor	s10, s10, s10
@@ -258,11 +276,8 @@ findMarkers:
 
 	
 findLoop:
-	xor	s1, s1, s1
+	xor	s2, s2, s2
 	beq	s10, s7, findEnd	# EOF
-	#jal	getPixelValue
-
-#getPixelValue:
 	
 	# check color values
 	lbu	t1, 0(t4)	# Blue
@@ -294,10 +309,6 @@ findLoop:
 	beqz	s2, nextPixel	# if found a single pixel
 	addi	s2, s2, 1
 	
-	#li	a7, Sys_PrintString
-	#la	a0, marker
-	#ecall
-	#jal	pp
 	
 	# check diagonal pixels - arm may have width
 	mv	t5, t4
@@ -309,7 +320,6 @@ findLoop:
 	addi	t3, t3, 1
 	li	a6, 1		# width
 	
-	#mv	a5, pc, 4
 	jal	a5, goDiag
 	
 	beq	a6, s2, nextPixel	# big square (width = length)
@@ -367,7 +377,6 @@ goDiag:
 	# if border is met, there is no possibility for that marker to be valid
 	beq	t3, s3, nextPixel	# L/R Border
 	beq	t2, s5, nextPixel	# T/B Border
-	#jal	pp
 	
 	lbu	t1, 0(t5)	# Blue
 	bnez	t1, foundDiag
@@ -382,12 +391,11 @@ goDiag:
 	jal	goRight
 	mv	s0, s1		# save found length
 	
-	mv	t5, t0
+	mv	t5, t0		# revert origin offset
 	mv	t6, t3		# y coordinate
 	jal	goDown
 	
-	mv	t5, t0
-	
+	mv	t5, t0		# revert origin offset
 	sub	t0, t2, s8	# width offset
 	
 	# s0 and s1 contain found lengths
@@ -407,11 +415,10 @@ goDiag:
 	j	goDiag
 
 foundDiag:
-	#sub	t0, t2, s8	# width offset
-	# x in s8
-	# y in s9
-	# length in s2
-	# width in a6
+# x in s8
+# y in s9
+# length in s2
+# width in a6
 	mv	ra, a5
 	ret
 	
@@ -461,21 +468,20 @@ printCoords:
 	li	a7, Sys_PrintInt
 	mv	a0, s9		# y
 	ecall
-	li	a7, Sys_PrintString
-	la	a0, blank	# ' '
-	ecall
-	li	a7, Sys_PrintInt
-	mv	a0, s2		# length
-	ecall
-	li	a7, Sys_PrintString
-	la	a0, blank	# ' '
-	ecall
-	li	a7, Sys_PrintInt
-	mv	a0, a6		# width
-	ecall
-	
+	#li	a7, Sys_PrintString
+	#la	a0, blank	# ' '
+	#ecall
+	#li	a7, Sys_PrintInt
+	#mv	a0, s2		# length
+	#ecall
+	#li	a7, Sys_PrintString
+	#la	a0, blank	# ' '
+	#ecall
+	#li	a7, Sys_PrintInt
+	#mv	a0, a6		# width
+	#ecall
+		
 	mv	a0, t6
-	#ret
 	
 nextPixel:
 	addi	s8, s8, 1
