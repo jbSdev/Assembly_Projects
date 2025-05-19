@@ -10,11 +10,11 @@
 
 .eqv	Img_desc_size	28
 	# proper image
-.eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
+#.eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
 #.eqv	PixelCount	76800
 
 	# 30x20 test image
-#.eqv	IMGMAXSIZE	1840
+.eqv	IMGMAXSIZE	1840
 #.eqv	PixelCount	600
 .eqv	Bmp_marker	0x4D42
 
@@ -52,8 +52,8 @@
 	
 	mfail:		.asciz "\nReading file error: "
 	errmsg:		.asciz	"\nError: "
-	fname:		.asciz	"../Assembly_projects/RISC-V_Project/markers_original.bmp"	# name of the file to open
-	#fname:		.asciz	"../Assembly_projects/RISC-V_Project/test_edit.bmp"	# name of the file to open
+	#fname:		.asciz	"../Assembly_projects/RISC-V_Project/markers_original.bmp"	# name of the file to open
+	fname:		.asciz	"../Assembly_projects/RISC-V_Project/test_edit.bmp"	# name of the file to open
 												# it has to be a relative path from the rars executable file, not the .asm file
 	
 	heightText:	.asciz "\nHeight: "
@@ -287,7 +287,7 @@ findLoop:
 	lbu	t1, 2(t4)	# Red
 	bnez	t1, nextPixel
 	
-	jal	checkPrevious
+	#jal	checkPrevious
 	
 	# pixel is a possible origin of marker
 	# check length of arm to right
@@ -323,6 +323,8 @@ findLoop:
 	jal	a5, goDiag
 	
 	beq	a6, s2, nextPixel	# big square (width = length)
+	
+	jal	t6, checkEdges
 
 	j	printCoords
 	#j	nextPixel
@@ -446,6 +448,163 @@ checkPrevious:
 	beqz	t1, nextPixel
 	
 	ret
+
+#---------------------------------------#
+# 	     checkEdges			#
+#	Checks pixels above the top	#
+#	    arm of the marker		#
+# Data:					#
+#	t5 - offset of first diag px	#
+#	t2 - current x			#
+#	t3 - current y			#
+#	s2 - base arm length		#
+#---------------------------------------#
+checkEdges:
+	# check upper edge of top arm
+	mv	t5, t4
+	mv	t2, s8
+	mv	t3, s9
+	add	t5, t5, s4
+	# no need to subtract t3 - y coordinate, we don't need it
+	jal	checkUpper
+
+	# check left edge of lower arm
+	mv	t5, t4
+	addi	t5, t5, -3
+	mv	t2, s8
+	jal	checkLeft
+	
+	li	t1, 3
+	mv	t5, t4
+	mul	t0, a6, t1
+	add	t5, t5, t0
+	mul	t0, a6, s4
+	sub	t5, t5, t0
+	mv	t2, s8
+	jal	checkBottom
+	
+	li	t1, 3
+	mv	t5, t4
+	mul	t0, a6, t1
+	add	t5, t5, t0
+	mul	t0, a6, s4
+	sub	t5, t5, t0
+	mv	t3, s9
+	jal	checkRight
+	
+	mv	ra, t6
+	ret
+	
+checkUpper:
+	beqz	t3, endUpper	# upper border of image
+	
+	sub	t0, t2, s8
+	bgtu	t0, s2, endUpper# end of the marker
+	xor	t0, t0, t0
+	
+	lbu	t1, 0(t5)	# Blue
+	add	t0, t0, t1		# 0x000000BB
+	slli	t0, t0, 1
+	lbu	t1, 1(t5)	# Green
+	add	t0, t0, t1		# 0x0000BBGG
+	slli	t0, t0, 1
+	lbu	t1, 2(t5)	# Red
+	add	t0, t0, t1		# 0x00BBGGRR
+	
+	#li	t1, 0x00FFFFFF
+	beqz	t0, nextPixel	# if pixel is black
+	
+	# go next
+	addi	t2, t2, 1
+	addi	t5, t5, 3
+	j	checkUpper
+	
+endUpper:
+	# no additional pixels above the marker
+	ret
+	
+checkLeft:
+	beqz	t2, endLeft
+	
+	sub	t0, t3, s9
+	beq	t0, s2, endLeft
+	xor	t0, t0, t0
+	
+	lbu	t1, 0(t5)	# Blue
+	add	t0, t0, t1		# 0x000000BB
+	slli	t0, t0, 1
+	lbu	t1, 1(t5)	# Green
+	add	t0, t0, t1		# 0x0000BBGG
+	slli	t0, t0, 1
+	lbu	t1, 2(t5)	# Red
+	add	t0, t0, t1		# 0x00BBGGRR
+	
+	#li	t1, 0x00FFFFFF
+	beqz	t0, nextPixel	# if pixel is black
+	
+	# go next
+	addi	t3, t3, 1
+	sub	t5, t5, s4
+	j	checkLeft
+
+endLeft:
+	# no additional pixels on the left size of the marker
+	ret
+	
+checkBottom:
+	sub	t1, s2, a6	# arm length - width (length of hanging part of arm)
+	sub	t0, t2, s8
+	bgtu	t0, t1, endBottom# end of the marker
+	xor	t0, t0, t0
+	
+	lbu	t1, 0(t5)	# Blue
+	add	t0, t0, t1		# 0x000000BB
+	slli	t0, t0, 1
+	lbu	t1, 1(t5)	# Green
+	add	t0, t0, t1		# 0x0000BBGG
+	slli	t0, t0, 1
+	lbu	t1, 2(t5)	# Red
+	add	t0, t0, t1		# 0x00BBGGRR
+	
+	#li	t1, 0x00FFFFFF
+	beqz	t0, nextPixel	# if pixel is black
+	
+	# go next
+	addi	t2, t2, 1
+	addi	t5, t5, 3
+	j	checkBottom
+	
+endBottom:
+	# no additional pixels below the upper marker arm
+	ret
+	
+checkRight:
+	sub	t1, s2, a6	# marker length - width (length of hanging part)
+	sub	t0, t3, s9
+	beq	t0, s1, endRight# end of marker
+	xor	t0, t0, t0
+	
+	lbu	t1, 0(t5)	# Blue
+	add	t0, t0, t1		# 0x000000BB
+	slli	t0, t0, 1
+	lbu	t1, 1(t5)	# Green
+	add	t0, t0, t1		# 0x0000BBGG
+	slli	t0, t0, 1
+	lbu	t1, 2(t5)	# Red
+	add	t0, t0, t1		# 0x00BBGGRR
+	
+	#li	t1, 0x00FFFFFF
+	beqz	t0, nextPixel	# if pixel is black
+	
+	# go next
+	addi	t3, t3, 1
+	sub	t5, t5, s4
+	j	checkRight
+
+endRight:
+	# no additional pixels on the right of bottom marker arm 
+	ret
+	
 #-------------------------------#
 # 	  Print Coords		#
 # Arguments:			#
