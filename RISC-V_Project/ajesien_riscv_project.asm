@@ -42,8 +42,8 @@
 	errorText:	.asciz "\nError: "
 	readErrText:	.asciz "\nFailed reading the file."
 	ftypeErrText:	.asciz "\nWrong filetype."
-	#fname:		.asciz	"source.bmp"		# name of the file to open
-	fname:		.asciz	"test.bmp"		# name of the file to open
+	fname:		.asciz	"source.bmp"		# name of the file to open
+	#fname:		.asciz	"test.bmp"		# name of the file to open
 	
 	heightText:	.asciz "\nHeight: "
 	widthText:	.asciz "\nWidth: "
@@ -191,13 +191,13 @@ readBmp:
 	ret
 	
 readError:
-	li	a0, 1
+	li	a0, 2	# ENOENT - file not found
 	la	a2, readErrText
 	ret
 	
 filetypeError:
 	# wrong filetype
-	li	a0, 2
+	li	a0, 22	# EINVAL - invalid input (file)
 	la	a2, ftypeErrText
 	ret
 
