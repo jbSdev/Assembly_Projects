@@ -9,10 +9,12 @@
 .eqv	Img_pixelcount	28
 .eqv	Img_pxoffset	32
 
+# Constants
 .eqv	Img_desc_size	32
 .eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
 .eqv	Bmp_ID		0x4D42
 
+# Header structure
 .eqv	Header_size	54
 .eqv	Header_marker	0
 .eqv	Header_pxoffset	10
@@ -187,7 +189,7 @@ readBmp:
 	mv	a0, t1
 	ecall
 	
-	mv	a0, zero
+	xor	a0, a0, a0
 	ret
 	
 readError:
@@ -240,14 +242,14 @@ printData:
 	ecall
 	
 	li	a7, Sys_PrintString
-	la	a0, pxcountText
+	la	a0, pxcountText	# pixelcount
 	ecall
 	li	a7, Sys_PrintInt
 	lw	a0, Img_pixelcount(t0)
 	ecall
 	
 	li	a7, Sys_PrintString
-	la	a0, endl
+	la	a0, endl	# '\n'
 	ecall
 	
 	ret
@@ -283,7 +285,6 @@ findMarkers:
 	lhu	s4, Img_bpl(a0)
 	lhu	s5, Img_width(a0)
 	lhu	s6, Img_padding(a0)
-	#li	s7, PixelCount
 	lw	s7, Img_pixelcount(a0)
 	xor	s8, s8, s8
 	xor	s9, s9, s9
@@ -341,6 +342,7 @@ findLoop:
 	
 	beq	a6, s2, nextPixel	# big square (width = length)
 	
+	# check edges of the marker for stray pixels
 	jal	a4, checkEdges
 
 	j	printCoords
@@ -444,8 +446,9 @@ goDiag:
 	sub	s0, s0, t0
 	
 	# move diagonally
-	addi	t2, t2, 1	# x++
-	addi	t3, t3, 1	# y++
+	addi	t2, t2, 1
+	addi	t3, t3, 1
+	
 	# border checked at start
 	addi	t5, t5, 3
 	sub	t5, t5, s4	# move offset diagonally
@@ -482,6 +485,7 @@ checkEdges:
 	mv	t2, s8		# set pointers to px on the left of origin
 	jal	checkLeft
 	
+	# check lower edge of top arm
 	mv	t5, t4
 	add	t0, a6, a6
 	add	t0, t0, a6	# t0 = a6 * 3 (width in bits -> offset to move right)
@@ -497,6 +501,7 @@ checkEdges:
 	add	t3, t3, a6	# set pointers to the px right in the corner outside of marker
 	jal	checkBottom
 	
+	# check right edge of lower arm
 	mv	t5, t4
 	add	t0, a6, a6
 	add	t0, t0, a6	# t0 = a6 * 3 (width in bits -> offset to move right)
@@ -543,7 +548,6 @@ checkUpper:
 	
 	beqz	t0, nextPixel	# if pixel is black
 	
-	# go next
 	addi	t2, t2, 1
 	addi	t5, t5, 3
 	j	checkUpper
@@ -579,16 +583,14 @@ checkLeft:
 	lbu	t1, 2(t5)	# Red
 	add	t0, t0, t1		# 0x00BBGGRR
 	
-	#li	t1, 0x00FFFFFF
 	beqz	t0, nextPixel	# if pixel is black
 	
-	# go next
 	addi	t3, t3, 1
 	sub	t5, t5, s4
 	j	checkLeft
 
 endLeft:
-	# no additional pixels on the left size of the marker
+	# no additional pixels on the left side of the marker
 	ret
 	
 #---------------------------------------#
@@ -618,10 +620,8 @@ checkBottom:
 	lbu	t1, 2(t5)	# Red
 	add	t0, t0, t1		# 0x00BBGGRR
 	
-	#li	t1, 0x00FFFFFF
 	beqz	t0, nextPixel	# if pixel is black
 	
-	# go next
 	addi	t2, t2, 1
 	addi	t5, t5, 3
 	j	checkBottom
@@ -659,17 +659,15 @@ checkRight:
 	
 	beqz	t0, nextPixel	# if pixel is black
 	
-	# go next
 	addi	t3, t3, 1
 	sub	t5, t5, s4
 	j	checkRight
 
 endRight:
-	# no additional pixels on the right of bottom marker arm 
+	# no additional pixels on the right of the bottom marker arm 
 	ret
 
 #-----------------------------------------------------------------------#
-
 #-------------------------------#
 # 	  Print Coords		#
 # Arguments:			#
@@ -709,7 +707,6 @@ nextPixel:
 	sub	t4, t4, s4	# t4 - 2*bpl
 	add	t4, t4, s6	# + padding
 	j	findLoop
-
 	
 #-----------------------------------------------------------------------#
 
