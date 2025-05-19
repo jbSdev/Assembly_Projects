@@ -7,36 +7,25 @@
 .eqv	Img_bpl		20	# bits per line
 .eqv	Img_padding	24
 .eqv	Img_pixelcount	28
+.eqv	Img_pxoffset	32
 
-.eqv	Img_desc_size	28
-	# proper image
-#.eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
-#.eqv	PixelCount	76800
-
-	# 30x20 test image
-.eqv	IMGMAXSIZE	1840
-#.eqv	PixelCount	600
-.eqv	Bmp_marker	0x4D42
+.eqv	Img_desc_size	32
+.eqv	IMGMAXSIZE	230400	# 240 * 320 * 3
+.eqv	Bmp_ID		0x4D42
 
 .eqv	Header_size	54
+.eqv	Header_marker	0
+.eqv	Header_pxoffset	10
 .eqv	Header_width	18
 .eqv	Header_height	22
-.eqv	Header_marker	0
-
-# Pixel data
-.eqv	x		0
-.eqv	y		4
-
 
 # System calls
-
 .eqv	Sys_PrintInt	1
 .eqv	Sys_PrintString	4
 .eqv	Sys_OpenFile	1024
 .eqv	Sys_ReadFile	63
 .eqv	Sys_CloseFile	57
 .eqv	Sys_Exit0	10
-
 
 
 .data
@@ -50,25 +39,24 @@
 	.align 2
 	ImgData:	.space IMGMAXSIZE
 	
-	mfail:		.asciz "\nReading file error: "
-	errmsg:		.asciz	"\nError: "
-	#fname:		.asciz	"../Assembly_projects/RISC-V_Project/markers_original.bmp"	# name of the file to open
-	fname:		.asciz	"../Assembly_projects/RISC-V_Project/test_edit.bmp"	# name of the file to open
-												# it has to be a relative path from the rars executable file, not the .asm file
+	errorText:	.asciz "\nError: "
+	readErrText:	.asciz "\nFailed reading the file."
+	ftypeErrText:	.asciz "\nWrong filetype."
+	#fname:		.asciz	"source.bmp"		# name of the file to open
+	fname:		.asciz	"test.bmp"		# name of the file to open
 	
 	heightText:	.asciz "\nHeight: "
 	widthText:	.asciz "\nWidth: "
-	linesText:	.asciz "\nBites per line: "
+	bplText:	.asciz "\nBites per line: "
 	paddingText:	.asciz "\nRow padding: "
 	pxcountText:	.asciz "\nPixel count: "
 	exitText:	.asciz "\nExiting program..."
 	blank:		.asciz " "
 	endl:		.asciz "\n"
-	marker:		.asciz "\nmarker: "
-	
 
 .text
 main:
+	
 	# initialize image descriptor structure
 	la	a0, ImgDesc
 	la	t0, fname
@@ -88,20 +76,24 @@ main:
 	
 	# find markers
 	la	a0, ImgDesc
-	jal	findMarkers
+	jal	s11, findMarkers
 	
 	# exit
 	la	a0, ImgDesc
 	jal	exitProgram
 
-readFail:	# Reading file error: ...
+readFail:
 	mv	t0, a0
 	li	a7, Sys_PrintString
-	la	a0, mfail
+	la	a0, errorText
 	ecall
 	
 	li	a7, Sys_PrintInt
 	mv	a0, t0
+	ecall
+	
+	li	a7, Sys_PrintString
+	mv	a0, a2
 	ecall
 	
 	li	a7, Sys_Exit0
@@ -113,6 +105,8 @@ readFail:	# Reading file error: ...
 #	a0 - pointer to a structure containing the file descriptor	#
 # returns:								#
 #	a0 - success = 0, error code in other case			#
+#		err = 1 - failed reading the file			#
+#		err = 2 - error						#
 #-----------------------------------------------------------------------#
 
 readBmp:
@@ -124,7 +118,7 @@ readBmp:
 	li	a1, 0		# flags
 	ecall
 	
-	blt	a0, zero, readError
+	bltz	a0, readError
 	mv	t1, a0		# save file handle
 	
 	# read the bmp header
@@ -136,7 +130,7 @@ readBmp:
 	# the bmp header is under pointer in a1
 	
 	# check if the file is a BMP file
-	li	t6, Bmp_marker
+	li	t6, Bmp_ID
 	lh	t5, Header_marker(a1)
 	bne	t5, t6, filetypeError
 	
@@ -161,11 +155,25 @@ readBmp:
 	# save image height
 	lw	a0, Header_height(a1)
 	sw	a0, Img_height(t0)
+	
+	# save offset of the first image pixel
+	lw	a0, Header_pxoffset(a1)
+	sw	a0, Img_pxoffset(t0)
 		
 	# save amount of pixels
+	lw	a0, Img_height(t0)
 	lw	a1, Img_width(t0)
 	mul  	a1, a0, a1		# number of pixels = width * height
 	sw	a1, Img_pixelcount(t0)
+	
+	# skip bytes about image compression
+	# if pxoffset = 54, skipping 0 bytes
+	lw	t2, Img_pxoffset(t0)
+	li	a7, Sys_ReadFile
+	mv	a0, t1
+	lw	a1, Img_imgdata(t0)
+	addi	a2, t2, -54
+	ecall
 	
 	# read image data
 	li	a7, Sys_ReadFile
@@ -184,39 +192,48 @@ readBmp:
 	
 readError:
 	li	a0, 1
+	la	a2, readErrText
 	ret
 	
 filetypeError:
+	# wrong filetype
 	li	a0, 2
+	la	a2, ftypeErrText
 	ret
 
+#-----------------------------------------------------------------------#
+# printData - prints info about the file				#
+# arguments:								#
+#	a0 - pointer to a structure containing the file descriptor	#
+# returns:								#
+#	nothing								#
 #-----------------------------------------------------------------------#
 printData:
 	mv	t0, a0		# save file handle
 	
 	li	a7, Sys_PrintString
-	la	a0, widthText
+	la	a0, widthText	# width
 	ecall
 	li	a7, Sys_PrintInt
 	lhu	a0, Img_width(t0)
 	ecall
 	
 	li	a7, Sys_PrintString
-	la	a0, heightText
+	la	a0, heightText	# height
 	ecall
 	li	a7, Sys_PrintInt
 	lhu	a0, Img_height(t0)
 	ecall
 	
 	li	a7, Sys_PrintString
-	la	a0, linesText
+	la	a0, bplText	# bpl
 	ecall
 	li	a7, Sys_PrintInt
 	lhu	a0, Img_bpl(t0)
 	ecall
 	
 	li	a7, Sys_PrintString
-	la	a0, paddingText
+	la	a0, paddingText	# padding
 	ecall
 	li	a7, Sys_PrintInt
 	lhu	a0, Img_padding(t0)
@@ -241,23 +258,26 @@ printData:
 # 	a0 - ptr to file descriptor struct				#
 # Returns:								#
 #	nothing								#
-#	prints to console all found black pixel coords (0, 0) - left top#
+#	prints to console all found black pixel coords			#
+#	(0, 0) - left top						#
 # Internal values:							#
-#	a6  - marker arm width
+#	a6  - marker arm width						#
+#	t1  - loading register						#
+#	t2  - temp X coordinate						#
+#	t3  - temp Y coordinate						#
 #	t4  - padding to pixel						#
+#	t5  - temp padding to pixel					#
 #	s2  - marker arm length						#
 #	s3  - image height						#
 #	s4  - image bits per line					#
 #	s5  - image width						#
 #	s6  - row padding						#
 #	s7  - Pixel Count						#
-#	s8  - x counter							#
-#	s9  - y counter							#
+#	s8  - X coordinate						#
+#	s9  - Y coordinate						#
 #	s10 - total pixel counter					#
 #-----------------------------------------------------------------------#
 findMarkers:
-	mv	s11, ra
-	
 	# load initial values
 	lhu	s3, Img_height(a0)
 	lhu	s4, Img_bpl(a0)
@@ -274,7 +294,6 @@ findMarkers:
 	mul	t0, t0, s4
 	add	t4, t4, t0	# t4 points to (0, 0) - left top
 
-	
 findLoop:
 	xor	s2, s2, s2
 	beq	s10, s7, findEnd	# EOF
@@ -286,8 +305,6 @@ findLoop:
 	bnez	t1, nextPixel
 	lbu	t1, 2(t4)	# Red
 	bnez	t1, nextPixel
-	
-	#jal	checkPrevious
 	
 	# pixel is a possible origin of marker
 	# check length of arm to right
@@ -324,12 +341,23 @@ findLoop:
 	
 	beq	a6, s2, nextPixel	# big square (width = length)
 	
-	jal	t6, checkEdges
+	jal	a4, checkEdges
 
 	j	printCoords
-	#j	nextPixel
+
+findEnd:	
+	mv	ra, s11
+	ret
 	
-	
+#-----------------------------------------------------------------------#
+
+#---------------------------------------#
+# 	        goRight			#
+# Arguments:				#
+#	t5 - offset of base px		#
+# Outputs:				#
+#	s1 - marker arm length		#
+#---------------------------------------#
 goRight:
 	beq	t6, s5, foundLengthRight
 	
@@ -349,6 +377,13 @@ foundLengthRight:
 	sub	s1, t6, t2	# right arm length
 	ret
 
+#---------------------------------------#
+# 	         goDown			#
+# Arguments:				#
+#	t5 - offset of base px		#
+# Outputs:				#
+#	s1 - marker arm length		#
+#---------------------------------------#
 goDown:
 	beq	t6, s3, foundLengthDown
 	
@@ -369,16 +404,17 @@ foundLengthDown:
 
 #---------------------------------------#
 # 	     goDiag			#
-# Data:					#
+# Arguments:				#
 #	t5 - offset of first diag px	#
-#	t2 - current x			#
-#	t3 - current y			#
-#	s2 - base arm length		#
+#	s5 - base pixel X coordinate	#
+#	s3 - base pixel Y coordinate	#
+# Outputs:				#
+#	s0 - base arm length		#
 #---------------------------------------#
 goDiag:
 	# if border is met, there is no possibility for that marker to be valid
 	beq	t3, s3, nextPixel	# L/R Border
-	beq	t2, s5, nextPixel	# T/B Border
+	beq	t2, s5, nextPixel	# U/D  Border
 	
 	lbu	t1, 0(t5)	# Blue
 	bnez	t1, foundDiag
@@ -417,37 +453,10 @@ goDiag:
 	j	goDiag
 
 foundDiag:
-# x in s8
-# y in s9
-# length in s2
-# width in a6
 	mv	ra, a5
 	ret
-	
-checkPrevious:
-	# check pixels to left and top of the current pixel
-	# if any are black, that means it the current pixel
-	# is connected to any form of possible marker which
-	# had to be checked previously
-	mv	t5, t4
-	addi	t5, t5, -3	# pixel to the left
-	lbu	t1, 0(t5)
-	beqz	t1, nextPixel
-	lbu	t1, 1(t5)
-	beqz	t1, nextPixel
-	lbu	t1, 2(t5)
-	beqz	t1, nextPixel
-	
-	mv	t5, t4
-	add	t5, t5, s4	# pixel above
-	lbu	t1, 0(t5)
-	beqz	t1, nextPixel
-	lbu	t1, 1(t5)
-	beqz	t1, nextPixel
-	lbu	t1, 2(t5)
-	beqz	t1, nextPixel
-	
-	ret
+
+#-----------------------------------------------------------------------#
 
 #---------------------------------------#
 # 	     checkEdges			#
@@ -464,54 +473,74 @@ checkEdges:
 	mv	t5, t4
 	mv	t2, s8
 	mv	t3, s9
-	add	t5, t5, s4
-	# no need to subtract t3 - y coordinate, we don't need it
+	add	t5, t5, s4	# set pointer to px above the origin
 	jal	checkUpper
 
 	# check left edge of lower arm
 	mv	t5, t4
 	addi	t5, t5, -3
-	mv	t2, s8
+	mv	t2, s8		# set pointers to px on the left of origin
 	jal	checkLeft
 	
-	li	t1, 3
 	mv	t5, t4
-	mul	t0, a6, t1
+	add	t0, a6, a6
+	add	t0, t0, a6	# t0 = a6 * 3 (width in bits -> offset to move right)
 	add	t5, t5, t0
-	mul	t0, a6, s4
+	mul	t0, a6, s4	# width * bpl (offset to move down)
 	sub	t5, t5, t0
+	
 	mv	t2, s8
+	add	t2, t2, a6
+	mv	t6, t2
+	
+	mv	t3, s9
+	add	t3, t3, a6	# set pointers to the px right in the corner outside of marker
 	jal	checkBottom
 	
-	li	t1, 3
 	mv	t5, t4
-	mul	t0, a6, t1
+	add	t0, a6, a6
+	add	t0, t0, a6	# t0 = a6 * 3 (width in bits -> offset to move right)
 	add	t5, t5, t0
 	mul	t0, a6, s4
 	sub	t5, t5, t0
+	
+	mv	t2, s8
+	add	t2, t2, a6
+	
 	mv	t3, s9
+	add	t3, t3, a6
+	mv	t6, t3		# set pointers to the px right in the corner outside of marker
 	jal	checkRight
 	
-	mv	ra, t6
+	mv	ra, a4
 	ret
-	
+
+#---------------------------------------#
+# 	       checkUpper		#
+# Arguments:				#
+#	t5 - offset of px above origin	#
+#	t2 - temp X coordinate		#
+#	t3 - temp Y coordinate		#
+# Checks if there are any stray black	#
+# pixels right above the marker, if yes	#
+# the marker is considered incorrect	#
+#---------------------------------------#
 checkUpper:
 	beqz	t3, endUpper	# upper border of image
 	
 	sub	t0, t2, s8
-	bgtu	t0, s2, endUpper# end of the marker
+	beq	t0, s2, endUpper# end of the marker
 	xor	t0, t0, t0
 	
 	lbu	t1, 0(t5)	# Blue
 	add	t0, t0, t1		# 0x000000BB
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 1(t5)	# Green
 	add	t0, t0, t1		# 0x0000BBGG
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 2(t5)	# Red
 	add	t0, t0, t1		# 0x00BBGGRR
 	
-	#li	t1, 0x00FFFFFF
 	beqz	t0, nextPixel	# if pixel is black
 	
 	# go next
@@ -523,6 +552,17 @@ endUpper:
 	# no additional pixels above the marker
 	ret
 	
+#---------------------------------------#
+# 	       checkLeft		#
+# Arguments:				#
+#	t5 - offset of px above origin	#
+#	t2 - temp X coordinate		#
+#	t3 - temp Y coordinate		#
+# Checks if there are any stray black	#
+# pixels on the left of the marker,	#
+# if yes the marker is considered	#
+# incorrect				#
+#---------------------------------------#	
 checkLeft:
 	beqz	t2, endLeft
 	
@@ -532,10 +572,10 @@ checkLeft:
 	
 	lbu	t1, 0(t5)	# Blue
 	add	t0, t0, t1		# 0x000000BB
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 1(t5)	# Green
 	add	t0, t0, t1		# 0x0000BBGG
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 2(t5)	# Red
 	add	t0, t0, t1		# 0x00BBGGRR
 	
@@ -551,18 +591,30 @@ endLeft:
 	# no additional pixels on the left size of the marker
 	ret
 	
+#---------------------------------------#
+# 	      checkBottom		#
+# Arguments:				#
+#	t5 - offset of px above origin	#
+#	t2 - temp X coordinate		#
+#	t3 - temp Y coordinate		#
+#	t6 - X coordinate of corner px	#
+# Checks if there are any stray black	#
+# pixels below the upper arm of the	#
+# the marker, if yes the marker is	#
+# considered incorrect			#
+#---------------------------------------#
 checkBottom:
 	sub	t1, s2, a6	# arm length - width (length of hanging part of arm)
-	sub	t0, t2, s8
-	bgtu	t0, t1, endBottom# end of the marker
+	sub	t0, t2, t6
+	beq	t0, t1, endBottom# end of the marker
 	xor	t0, t0, t0
 	
 	lbu	t1, 0(t5)	# Blue
 	add	t0, t0, t1		# 0x000000BB
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 1(t5)	# Green
 	add	t0, t0, t1		# 0x0000BBGG
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 2(t5)	# Red
 	add	t0, t0, t1		# 0x00BBGGRR
 	
@@ -578,22 +630,33 @@ endBottom:
 	# no additional pixels below the upper marker arm
 	ret
 	
+#---------------------------------------#
+# 	       checkRight		#
+# Arguments:				#
+#	t5 - offset of px above origin	#
+#	t2 - temp X coordinate		#
+#	t3 - temp Y coordinate		#
+#	t6 - X coordinate of corner px	#
+# Checks if there are any stray black	#
+# pixels on the right side of the	#
+# bottom arm of the marker, if yes	#
+# the marker is considered incorrect	#
+#---------------------------------------#
 checkRight:
 	sub	t1, s2, a6	# marker length - width (length of hanging part)
-	sub	t0, t3, s9
-	beq	t0, s1, endRight# end of marker
+	sub	t0, t3, t6
+	beq	t0, t1, endRight# end of marker
 	xor	t0, t0, t0
 	
 	lbu	t1, 0(t5)	# Blue
 	add	t0, t0, t1		# 0x000000BB
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 1(t5)	# Green
 	add	t0, t0, t1		# 0x0000BBGG
-	slli	t0, t0, 1
+	slli	t0, t0, 8
 	lbu	t1, 2(t5)	# Red
 	add	t0, t0, t1		# 0x00BBGGRR
 	
-	#li	t1, 0x00FFFFFF
 	beqz	t0, nextPixel	# if pixel is black
 	
 	# go next
@@ -604,12 +667,16 @@ checkRight:
 endRight:
 	# no additional pixels on the right of bottom marker arm 
 	ret
-	
+
+#-----------------------------------------------------------------------#
+
 #-------------------------------#
 # 	  Print Coords		#
 # Arguments:			#
 #	s8 - x			#
 #	s9 - y			#
+#	s2 - marker length	#
+#	a6 - marker width	#
 #-------------------------------#
 
 printCoords:
@@ -627,18 +694,6 @@ printCoords:
 	li	a7, Sys_PrintInt
 	mv	a0, s9		# y
 	ecall
-	#li	a7, Sys_PrintString
-	#la	a0, blank	# ' '
-	#ecall
-	#li	a7, Sys_PrintInt
-	#mv	a0, s2		# length
-	#ecall
-	#li	a7, Sys_PrintString
-	#la	a0, blank	# ' '
-	#ecall
-	#li	a7, Sys_PrintInt
-	#mv	a0, a6		# width
-	#ecall
 		
 	mv	a0, t6
 	
@@ -655,11 +710,7 @@ nextPixel:
 	add	t4, t4, s6	# + padding
 	j	findLoop
 
-###
-
-findEnd:	
-	mv	ra, s11
-	ret
+	
 #-----------------------------------------------------------------------#
 
 exitProgram:
