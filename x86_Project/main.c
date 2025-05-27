@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 unsigned int find_markers(unsigned char* bitmap,
-                 unsigned int *x_pos,
-                 unsigned int *y_pos);
+                 unsigned int* x_pos,
+                 unsigned int* y_pos,
+                 unsigned int* length);
 
 // CPU cycles counter
 static inline uint64_t read_tsc()
@@ -11,6 +12,17 @@ static inline uint64_t read_tsc()
     uint32_t lo, hi;
     __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
     return ((uint64_t)hi << 32) | lo;
+}
+
+void readBMP(char* buffer, FILE* fstream)
+{
+    int i = 0;
+    char c;
+    while (!feof(fstream))
+    {
+        c = fgetc(fstream);
+        buffer[i++] = c;
+    }
 }
 
 int main()
@@ -60,14 +72,22 @@ int main()
 
     unsigned int x_pos[50];
     unsigned int y_pos[50];
-    unsigned int output;
-    //s_cyc = read_tsc();
-    output = find_markers(bitmap, x_pos, y_pos);
-    //e_cyc = read_tsc();
+    unsigned int length[50];
+    for (int i = 0; i < 50; i++)
+        x_pos[i] = y_pos[i] = -1;
 
-    printf("Output value: %d\n", output);
-    printf("End of code\n");
-    //printf("CPU Cycles: %llu\n", (unsigned long long)(e_cyc - s_cyc));
+    unsigned int output;
+
+    ;s_cyc = read_tsc();
+    output = find_markers(bitmap, x_pos, y_pos, length);
+    ;e_cyc = read_tsc();
+
+    printf("Output value: %u\n", output);
+    int i = -1;
+    while (x_pos[++i] != -1 && i != 10)
+        printf("%u %u %u\n", x_pos[i], y_pos[i], length[i]);
+
+    ;printf("CPU Cycles: %llu\n", (unsigned long long)(e_cyc - s_cyc));
 
     free(bitmap);
     return 0;
