@@ -26,7 +26,7 @@ section .bss
 
 section .data
         counter         dd      0
-        markerCount     db      0
+        markerCount     dd      0
 
         ; characters
         buf             db      12 dup(0)
@@ -118,13 +118,13 @@ findMarkers:
         mov     esi, [bitmap]
         mov     eax, [Img_height]
         dec     eax
-        mul     word [Img_width]
+        mul     word [Img_bpl]
         lea     esi, [esi + eax]        ; points to (0,0) - top left corner
 
 findLoop:
         mov     word [baseX], 0
-        mov     cx, word [counter]
-        cmp     cx, word [Img_pixelcount]
+        mov     ecx, dword [counter]
+        cmp     ecx, dword [Img_pixelcount]
         je      findEnd
 
         mov     edx, [esi]
@@ -170,7 +170,7 @@ findLoop:
         
         inc     byte [markerCount]
 
-        call    printCoords
+        ; call    printCoords
 
         jmp     nextPixel
 
@@ -178,8 +178,8 @@ findEnd:
         ret
 
 nextPixel:
-        inc     word [baseX]
-        inc     word [counter]
+        inc     dword [baseX]
+        inc     dword [counter]
         add     esi, 3
         mov     cx, [baseX]
         cmp     cx, [Img_width]
@@ -256,7 +256,7 @@ goDiag:
 
         mov     cx, ax
         sub     cx, [baseX]
-        movzx   [tempWidth], cx
+        mov     [tempWidth], cx
 
         mov     cx, [tempLength]
         add     cx, [tempWidth]
