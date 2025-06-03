@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 
 unsigned int find_markers(unsigned char* bitmap,
                  unsigned int* x_pos,

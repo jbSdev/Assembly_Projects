@@ -27,13 +27,6 @@ section .data
         tempX           dw 	0
         tempY           dw 	0
 
-        ; characters
-        buf             db      12 dup(0)
-        newline         db      0xA, 0
-        space           db      0x20, 0
-        text            db      "line", 10
-        found           db      "found -> "
-
 section .text
         global  find_markers
 
@@ -420,96 +413,6 @@ endCheck:
         pop     edx     ; pop retAddr from checkEdges
         jmp     nextPixel
 ;------------------------------------------------;
-printCoords:
-        push    eax
-        movzx   eax, word [baseX]
-        call    printDecimal
-        call    printSpace
-        movzx   eax, word [baseY]
-        call    printDecimal
-        call    printSpace
-        mov     eax, [counter]
-        call    printDecimal
-        call    printNewline
-        pop     eax
-
-        ret
-        
-; in ax - value to print
-printDecimal:
-        push    eax
-        push    ebx
-        push    ecx
-        push    edx
-        push    esi
-
-        xor     ecx, ecx
-        mov     ebx, 10
-
-        mov     esi, buf + 11
-        mov     byte [esi], 0
-
-        convert:
-                xor     edx, edx
-                div     ebx
-                add     dl, '0'
-                dec     esi
-                mov     [esi], dl
-                inc     ecx
-                test    eax, eax
-                jnz     convert
-
-        ; print
-        mov     eax, 4
-        mov     ebx, 1
-        mov     edx, ecx
-        mov     ecx, esi
-        int     0x80
-
-        pop     esi
-        pop     edx
-        pop     ecx
-        pop     ebx
-        pop     eax
-
-        ret
-
-printNewline:
-        push    eax
-        push    ebx
-        push    ecx
-        push    edx
-
-        mov     eax, 4
-        mov     ebx, 1
-        mov     ecx, newline
-        mov     edx, 1
-        int     0x80
-
-        pop    edx
-        pop    ecx
-        pop    ebx
-        pop    eax
-        ret
-
-printSpace:
-        push    eax
-        push    ebx
-        push    ecx
-        push    edx
-
-        mov     eax, 4
-        mov     ebx, 1
-        mov     ecx, space
-        mov     edx, 1
-        int     0x80
-
-        pop     edx
-        pop     ecx
-        pop     ebx
-        pop     eax
-        ret
-
 ; adds the coordinate to the arrays
 saveCoords:
         movzx   eax, word [baseY]
