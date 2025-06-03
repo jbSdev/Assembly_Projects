@@ -10,8 +10,6 @@ section .bss
         bitmap          resd	1
         X_table         resd	1
         Y_table         resd	1
-        L_table         resd    1
-        W_table         resd    1
 
         ; Variable data
         markerLength    resw	1
@@ -48,10 +46,6 @@ find_markers:
         mov     [X_table], eax
         mov     eax, [ebp + 16]
         mov     [Y_table], eax
-        mov     eax, [ebp + 20]
-        mov     [L_table], eax
-        mov     eax, [ebp + 24]
-        mov     [W_table], eax
 
         mov     eax, [ebp + 8]
 
@@ -533,18 +527,6 @@ saveCoords:
         mov     ebx, [Y_table]
         lea     eax, [ebx + 4*eax]
         movzx   ebx, word [baseY]
-        mov     [eax], ebx
-
-        mov     eax, [markerCount]
-        mov     ebx, [L_table]
-        lea     eax, [ebx + 4*eax]
-        movzx   ebx, word [markerLength]
-        mov     [eax], ebx
-
-        mov     eax, [markerCount]
-        mov     ebx, [W_table]
-        lea     eax, [ebx + 4*eax]
-        movzx   ebx, word [markerWidth]
         mov     [eax], ebx
 
         inc     dword [markerCount]
