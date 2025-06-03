@@ -10,7 +10,5 @@ The program should load the image, check its correctness and output all position
 
 #### Architectures:
  - **RISC-V** ![](https://geps.dev/progress/100)
- - **x86**    ![](https://geps.dev/progress/60)
- - **x86-64** ![](https://geps.dev/progress/0)
-
-- 
+ - **x86**    ![](https://geps.dev/progress/100)
+ - **x86-64** ![](https://geps.dev/progress/40)
