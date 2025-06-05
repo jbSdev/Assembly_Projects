@@ -23,8 +23,8 @@ int main()
     //fflush(stdout);
     //scanf("%s", filename);
     
-    //char* filename = "test.bmp";
-    char* filename = "source.bmp";
+    char* filename = "test.bmp";
+    //char* filename = "source.bmp";
 
     // open the file
     FILE* file = fopen(filename, "r");
