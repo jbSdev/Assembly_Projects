@@ -7,10 +7,11 @@ section .bss
         Img_pixelcount  resd	1 
         Img_pxoffset    resd	1
 
-        bitmap          resq	1
-	header		resq	1
-        X_table         resq	1
-        Y_table         resq	1
+        bitmap          resd	1
+        X_table         resd	1
+        Y_table         resd	1
+        L_table         resd    1
+        W_table         resd    1
 
         ; Variable data
         markerLength    resw	1
@@ -39,155 +40,149 @@ section .text
         global  find_markers
 
 find_markers:
-        push    rbp
-        mov     rbp, rsp
-        push    rbx
+        push    ebp
+        mov     ebp, esp
+        push    ebx
 
-	mov	[header],  rdi
-        mov     [X_table], rsi
-        mov     [Y_table], rdx
+        mov     eax, [ebp + 12]
+        mov     [X_table], eax
+        mov     eax, [ebp + 16]
+        mov     [Y_table], eax
+        mov     eax, [ebp + 20]
+        mov     [L_table], eax
+        mov     eax, [ebp + 24]
+        mov     [W_table], eax
 
+        mov     eax, [ebp + 8]
 
         call    getHeader
 
         call    findMarkers
 
 fin:
-	mov	rax, [markerCount]
-        pop     rbx
-        pop     rbp
+        mov     eax, [markerCount]
+        pop     ebx
+        pop     ebp
         ret
 
 getHeader:
-	mov	rsi, [header]
+        mov     esi, [ebp + 8]
+
         ; Check filetype
-        xor     rax, rax
-        mov     ax, [rsi]
+        xor     eax, eax
+        mov     ax, [esi]
         cmp     ax, 0x4D42              ; .bmp file marker
         jne     fileTypeError
 
         ; Width
-        mov     eax, [rsi + 0x12]
+        xor     eax, eax
+        mov     eax, [esi + 0x12]
         mov     [Img_width], eax
 
         ; Height
-        mov     ebx, [rsi+ 0x16]
+        xor     ebx, ebx
+        mov     ebx, [esi+ 0x16]
         mov     [Img_height], ebx
 
         ; PixelCount
-        mul     rbx                     ; width * height
+        mul     ebx                     ; width * height
         mov     [Img_pixelcount], eax
 
         ; Bits Per Line
-	xor	rax, rax
-        mov  	ax, word [Img_width]
+        movzx   eax, word [Img_width]
         lea     eax, [eax + 2*eax + 3]
         shr     eax, 2
         shl     eax, 2
         mov     [Img_bpl], eax
 
         ; Padding
-        movzx  	ebx, word [Img_width]
+        movzx   ebx, word [Img_width]
         lea     ebx, [ebx + 2*ebx]      ; padding at the end of line
         sub     eax, ebx
         mov     [Img_padding], eax
 
         ; Pixel offset
-	xor	eax, eax
-        mov     eax, dword [rsi + 0x0A]
+        mov     eax, [esi + 0x0A]
         test    eax, eax
         jz      fileTypeError
         mov     [Img_pxoffset], eax
 
         ; Bitmap pointer
-        lea     rax, [rsi + rax]
-        test    rax, rax
+        lea     eax, [esi + eax]
+        test    eax, eax
         jz      fileTypeError
-        mov     [bitmap], rax
+        mov     [bitmap], eax
 
+        xor     eax, eax
         ret
 
 fileTypeError:
-        mov     rax, 1010
+        mov     eax, 1010
         ret
 
 ;------------------------------------------------;
 
 findMarkers:
-        mov     rsi, [bitmap]
+        mov     esi, [bitmap]
         movzx   eax, word [Img_height]
         dec     eax
         mul     dword [Img_bpl]
-        add     rsi, rax                ; points to (0,0) - top left corner
+        add     esi, eax                ; points to (0,0) - top left corner
 
         mov     word [baseX], 0
 
 findLoop:
-	movzx	rax, word [baseX]
-	call	printDecimal
-	call	printSpace
-	movzx	rax, word [baseY]
-	call	printDecimal
-	call	printSpace
-	mov	rax, [counter]
-	call	printDecimal
-	call	printNewline
-
-	xor	ecx, ecx
-        mov     rcx, [counter]
-	mov	rdx, [Img_pixelcount]
-        cmp     rcx, rdx
+        mov     ecx, dword [counter]
+        xor     ecx, dword [Img_pixelcount]
         jz      findEnd
 
-        movzx   rcx, word [baseY]
-	mov	rdx, [Img_height]
-        cmp     rcx, rdx
-	je      findEnd
+        movzx   ecx, word [baseY]
+        cmp     ecx, [Img_height]
+        je      findEnd
 
         cmp     dword [markerCount], 50
         je      findEnd
 
-        mov     edx, [rsi]
+        mov     edx, [esi]
         and     edx, 0x00FFFFFF         ; EDX = 0x00RRGGBB
         jnz     nextPixel
 
         ; pixel is possible base of a marker
-	;xor	rcx, rcx
-        ;mov     rdi, rsi
-        ;mov     cx, word [baseX]
-        ;mov     word [tempX], cx
-        ;call    goRight
-        ;mov     word [markerLength], cx
+        mov     edi, esi
+        mov     cx, word [baseX]
+        mov     word [tempX], cx
+        call    goRight
+        mov     word [markerLength], cx
 
-        ;mov     rdi, rsi
-        ;mov     cx, [baseY]
-        ;mov     word [tempY], cx
-        ;call    goDown
-        ;
-        ;; arms not equal in length
-        ;cmp     cx, word [markerLength]
-        ;jne     nextPixel
+        mov     edi, esi
+        mov     cx, [baseY]
+        mov     word [tempY], cx
+        call    goDown
+        
+        ; arms not equal in length
+        cmp     cx, word [markerLength]
+        jne     nextPixel
 
-        ;; if it's a single pixel
-        ;cmp     word [markerLength], 2
-        ;jl      nextPixel
+        ; if it's a single pixel
+        cmp     word [markerLength], 2
+        jl      nextPixel
 
-       ; ; check diagonal pixels
-       ; lea     rdi, [rsi + 3]
-       ; sub     rdi, qword [Img_bpl]
+        ; check diagonal pixels
+        lea     edi, [esi + 3]
+        sub     edi, [Img_bpl]
 
-       ; movzx   eax, word [baseX]
-       ; inc     ax
-       ; movzx   ebx, word [baseY]
-       ; inc     bx
+        movzx   eax, word [baseX]
+        inc     ax
+        movzx   ebx, word [baseY]
+        inc     bx
 
-       ; call    goDiag
+        call    goDiag
 
-       ; mov     cx, [markerWidth]
-       ; cmp     cx, [markerLength]
-       ; je      nextPixel               ; big square
+        mov     cx, [markerWidth]
+        cmp     cx, [markerLength]
+        je      nextPixel               ; big square
 
-       ; call    checkEdges
+        call    checkEdges
         
         call    saveCoords
 
@@ -197,14 +192,10 @@ findEnd:
         ret
 
 nextPixel:
-	;mov	rax, [counter]
-	;call	printDecimal
-
         inc     word [baseX]
         inc     dword [counter]
-        add     rsi, 3
+        add     esi, 3
 
-	xor	rcx, rcx
         mov     cx, word [baseX]
         cmp     cx, [Img_width]
         jne     findLoop
@@ -212,10 +203,9 @@ nextPixel:
         mov     word [baseX], 0
         inc     word [baseY]
 
-        add     rsi, [Img_padding]
-        sub     rsi, [Img_bpl]
-        sub     rsi, [Img_bpl]
-
+        add     esi, [Img_padding]
+        sub     esi, [Img_bpl]
+        sub     esi, [Img_bpl]
 
         jmp     findLoop
 
@@ -225,11 +215,11 @@ goRight:
         cmp     cx, [Img_width]
         je      foundRight
 
-        mov     edx, [rdi]
+        mov     edx, [edi]
         and     edx, 0x00FFFFFF
         jnz     foundRight
 
-        add     rdi, 3
+        add     edi, 3
         inc     cx
         jmp     goRight
 
@@ -241,11 +231,11 @@ goDown:
         cmp     cx, [Img_height]
         je      foundDown
 
-        mov     edx, [rdi]
+        mov     edx, [edi]
         and     edx, 0x00FFFFFF
         jnz     foundDown
 
-        sub     rdi, [Img_bpl]
+        sub     edi, [Img_bpl]
         inc     cx
         jmp     goDown
 
@@ -266,24 +256,25 @@ goDiag:
         sub     cx, word [baseX]
         mov     [markerWidth], cx
 
-        mov     edx, [rdi]
+        mov     edx, [edi]
         and     edx, 0x00FFFFFF
         jnz     foundDiag
 
         ; pixel is black
-        xor     rcx, rcx
+        xor     ecx, ecx
 
-	mov	r8, rdi
+        push    edi
         mov     cx, ax
         mov     word [tempX], ax
         call    goRight
         mov     [tempLength], cx
-	mov	rdi, r8
+        pop     edi
 
+        push    edi
         mov     cx, bx
         mov     word [tempY], bx
         call    goDown
-	mov	rdi, r8
+        pop     edi
 
         cmp     cx, word [tempLength]
         jne     endDiag                 ; internal arms not equal
@@ -296,8 +287,8 @@ goDiag:
         ; move to the next diagonal pixel
         inc     ax
         inc     bx
-        add     rdi, 3
-        sub     rdi, [Img_bpl]
+        add     edi, 3
+        sub     edi, [Img_bpl]
 
         jmp     goDiag
 
@@ -309,19 +300,19 @@ incWidth:
         ret
 
 endDiag:
-        pop     rdx
+        pop     edx
         jmp     nextPixel
 
 ;------------------------------------------------;
 
 checkEdges:
-        mov     rdi, rsi
+        mov     edi, esi
         add     edi, [Img_bpl]
         movzx   eax, word [baseX]
         movzx   ebx, word [baseY]
         call    checkUpper
 
-        lea     rdi, [rsi - 3]
+        lea     edi, [esi - 3]
         movzx   eax, word [baseX]
         movzx   ebx, word [baseY]
         call    checkLeft
@@ -330,12 +321,14 @@ checkEdges:
         sub     cx, [markerWidth]
         mov     [hangingLength], cx
 
-        mov     rdi, rsi
-        movzx   r9d, word [markerWidth]
-        lea     ecx, [r9d + 2*r9d]
-        add     rdi, rcx
+        push    eax
+        mov     edi, esi
+        movzx   eax, word [markerWidth]
+        lea     ecx, [eax + 2*eax]
+        add     edi, ecx
         mul     dword [Img_bpl]
-        sub     rdi, r9
+        sub     edi, eax
+        pop     eax
 
         movzx   eax, word [baseX]
         add     ax, [markerWidth]
@@ -343,12 +336,14 @@ checkEdges:
 
         call    checkBottom
 
-        mov     rdi, rsi
-        movzx   r9d, word [markerWidth]
-        lea     ecx, [r9d + 2*r9d]
+        push    eax
+        mov     edi, esi
+        movzx   eax, word [markerWidth]
+        lea     ecx, [eax + 2*eax]
         add     edi, ecx
         mul     dword [Img_bpl]
-        sub     edi, r9d
+        sub     edi, eax
+        pop     eax
 
         movzx   ebx, word [baseY]
         add     bx, [markerWidth]
@@ -368,12 +363,12 @@ checkUpper:
         cmp     cx, [markerLength]
         je      returnCheck
 
-        mov     edx, [rdi]
+        mov     edx, [edi]
         and     edx, 0x00FFFFFF
         jz      endCheck
 
         inc     ax
-        add     rdi, 3
+        add     edi, 3
         jmp     checkUpper
 
 checkLeft:
@@ -385,12 +380,12 @@ checkLeft:
         cmp     cx, [markerLength]
         je      returnCheck
 
-        mov     edx, [rdi]
+        mov     edx, [edi]
         and     edx, 0x00FFFFFF
         jz      endCheck
 
         inc     bx
-        sub     rdi, [Img_bpl]
+        sub     edi, [Img_bpl]
         jmp     checkLeft
 
 ;       cx - saved starting point X coordinate
@@ -400,12 +395,12 @@ checkBottom:
         cmp     dx, [hangingLength]
         je      returnCheck
 
-        mov     edx, [rdi]
+        mov     edx, [edi]
         and     edx, 0x00FFFFFF
         jz      endCheck
 
         inc     ax
-        add     rdi, 3
+        add     edi, 3
         jmp     checkBottom
 
 ;       cx - saved starting point Y coordinate
@@ -415,128 +410,145 @@ checkRight:
         cmp     dx, [hangingLength]
         je      returnCheck
 
-        mov     edx, [rdi]
+        mov     edx, [edi]
         and     edx, 0x00FFFFFF
         jz      endCheck
 
         inc     bx
-        sub     rdi, qword [Img_bpl]
+        sub     edi, [Img_bpl]
         jmp     checkRight
 
 returnCheck:
         ret
 
 endCheck:
-        pop     rdx     ; pop retAddr from checkSides
-        pop     rdx     ; pop retAddr from checkEdges
+        pop     edx     ; pop retAddr from checkSides
+        pop     edx     ; pop retAddr from checkEdges
         jmp     nextPixel
 ;------------------------------------------------;
+printCoords:
+        push    eax
+        movzx   eax, word [baseX]
+        call    printDecimal
+        call    printSpace
+        movzx   eax, word [baseY]
+        call    printDecimal
+        call    printSpace
+        mov     eax, [counter]
+        call    printDecimal
+        call    printNewline
+        pop     eax
+
+        ret
+        
+; in ax - value to print
+printDecimal:
+        push    eax
+        push    ebx
+        push    ecx
+        push    edx
+        push    esi
+
+        xor     ecx, ecx
+        mov     ebx, 10
+
+        mov     esi, buf + 11
+        mov     byte [esi], 0
+
+        convert:
+                xor     edx, edx
+                div     ebx
+                add     dl, '0'
+                dec     esi
+                mov     [esi], dl
+                inc     ecx
+                test    eax, eax
+                jnz     convert
+
+        ; print
+        mov     eax, 4
+        mov     ebx, 1
+        mov     edx, ecx
+        mov     ecx, esi
+        int     0x80
+
+        pop     esi
+        pop     edx
+        pop     ecx
+        pop     ebx
+        pop     eax
+
+        ret
+
+printNewline:
+        push    eax
+        push    ebx
+        push    ecx
+        push    edx
+
+        mov     eax, 4
+        mov     ebx, 1
+        mov     ecx, newline
+        mov     edx, 1
+        int     0x80
+
+        pop    edx
+        pop    ecx
+        pop    ebx
+        pop    eax
+        ret
+
+printSpace:
+        push    eax
+        push    ebx
+        push    ecx
+        push    edx
+
+        mov     eax, 4
+        mov     ebx, 1
+        mov     ecx, space
+        mov     edx, 1
+        int     0x80
+
+        pop     edx
+        pop     ecx
+        pop     ebx
+        pop     eax
+        ret
+
 ; adds the coordinate to the arrays
 saveCoords:
-	xor	rax, rax
-	xor	rbx, rbx
-        movzx   rax, word [baseY]
-        movzx   rbx, word [Img_height]
-        cmp     rax, rbx
+        movzx   eax, word [baseY]
+        movzx   ebx, word [Img_height]
+        cmp     eax, ebx
         je      skipSave
 
-	xor	rax, rax
-        mov	eax, [markerCount]
-        mov     rbx, [X_table]
-        lea     rax, [rbx + 4*rax]
-	xor	rbx, rbx
-        movzx   rbx, word [baseX]
-        mov     [rax], rbx
+        mov     eax, [markerCount]
+        mov     ebx, [X_table]
+        lea     eax, [ebx + 4*eax]
+        movzx   ebx, word [baseX]
+        mov     [eax], ebx
 
-	xor	rax, rax
-        mov	eax, [markerCount]
-        mov     rbx, [Y_table]
-        lea   	rax, [rbx + 4*rax]
-	xor	rbx, rbx
-        movzx	rbx, word [baseY]
-        mov     [rax], rbx
+        mov     eax, [markerCount]
+        mov     ebx, [Y_table]
+        lea     eax, [ebx + 4*eax]
+        movzx   ebx, word [baseY]
+        mov     [eax], ebx
+
+        mov     eax, [markerCount]
+        mov     ebx, [L_table]
+        lea     eax, [ebx + 4*eax]
+        movzx   ebx, word [markerLength]
+        mov     [eax], ebx
+
+        mov     eax, [markerCount]
+        mov     ebx, [W_table]
+        lea     eax, [ebx + 4*eax]
+        movzx   ebx, word [markerWidth]
+        mov     [eax], ebx
 
         inc     dword [markerCount]
 
 skipSave:
         ret
 
-
-printDecimal:
-	push	rax
-	push	rbx
-	push	rcx
-	push	rdx
-	push	rsi
-
-	xor	rcx, rcx
-	mov	rbx, 10
-
-	lea	rsi, [rel buf + 10]
-	mov	byte [rsi], 0
-
-	convert:
-		xor	rdx, rdx
-		div	rbx
-		add	dl, '0'
-		dec	rsi
-		mov	[rsi], dl
-		inc	rcx
-		test	rax, rax
-		jnz	convert
-	
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, rsi
-	mov	rdx, rcx
-	syscall	
-
-	pop	rsi
-	pop	rdx
-	pop	rcx
-	pop	rbx
-	pop	rax
-
-	ret
-
-printSpace:
-	push	rax
-	push	rbx
-	push	rcx
-	push	rdx
-	push	rsi
-
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, space
-	mov	rdx, 1
-	syscall
-
-	pop	rsi
-	pop	rdx
-	pop	rcx
-	pop	rbx
-	pop	rax
-
-	ret
-
-printNewline:
-	push	rax
-	push	rbx
-	push	rcx
-	push	rdx
-	push	rsi
-
-	mov	rax, 1
-	mov	rdi, 1
-	mov	rsi, newline
-	mov	rdx, 1
-	syscall
-
-	pop	rsi
-	pop	rdx
-	pop	rcx
-	pop	rbx
-	pop	rax
-
-	ret

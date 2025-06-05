@@ -170,11 +170,11 @@ findLoop:
 
         call    goDiag
 
-        ;mov     cx, [markerWidth]
-        ;cmp     cx, [markerLength]
-        ;je      nextPixel
+        mov     cx, [markerWidth]
+        cmp     cx, [markerLength]
+        je      nextPixel
 
-        ;call    checkEdges
+        call    checkEdges
 
         call    saveCoords
 
@@ -254,21 +254,6 @@ foundDown:
 ;       ax - temp X
 ;       bx - temp Y
 goDiag:
-;push	rax
-;call	printSpace
-;call	printDecimal
-;call	printSpace
-;mov	rax, rbx
-;call	printDecimal
-;call	printSpace
-;mov	rax, rsi
-;call	printDecimal
-;call	printSpace
-;mov	rax, rdi
-;call	printDecimal
-;call	printNewline
-;pop	rax
-
         cmp     eax, [Img_width]
         je      endDiag
         cmp     ebx, [Img_height]
@@ -298,29 +283,29 @@ goDiag:
         call    goDown
         pop     rdi
 
-        ;cmp     cx, word [tempLength]
-        ;jne     endDiag
+        cmp     cx, word [tempLength]
+        jne     endDiag
 
-        ;movzx   ecx, word [markerWidth]
-        ;add     cx, word [tempLength]
-        ;cmp     cx, word [markerLength]
-        ;jne     endDiag
+        movzx   ecx, word [markerWidth]
+        add     cx, word [tempLength]
+        cmp     cx, word [markerLength]
+        jne     endDiag
 
         inc     rax
         inc     rbx
-        ;add     rdi, 3
-        ;sub     rdi, [Img_bpl]
+        add     rdi, 3
+        sub     rdi, [Img_bpl]
 
-	;push	rax
-	;mov	rdi, [bitmap]
-	;mov	rax, [Img_height]
-	;dec	rax
-	;sub	rax, rbx
-	;mul	dword [Img_bpl]
-	;add	rdi, rax
-	;pop	rax
-	;lea	rdx, [rax + 2*rax]
-	;add	rdi, rax
+	push	rax
+	mov	rdi, [bitmap]
+	mov	rax, [Img_height]
+	dec	rax
+	sub	rax, rbx
+	mul	dword [Img_bpl]
+	add	rdi, rax
+	pop	rax
+	lea	rdx, [rax + 2*rax]
+	add	rdi, rax
 
         jmp     goDiag
 
@@ -338,39 +323,49 @@ endDiag:
 ;------------------------------------------------;
 
 checkEdges:
-push	rax
-movzx	rax, word [baseX]
-call	printDecimal
-call	printSpace
-movzx	rax, word [baseY]
-call	printDecimal
-call	printNewline
-pop	rax
-
-        mov     rdi, rsi
-        add     rdi, [Img_bpl]
-        movzx   rax, word [baseX]
-        movzx   rbx, word [baseY]
+	mov	rdi, [bitmap]
+        mov	rax, [Img_height]
+	movzx	rdx, word [baseY]
+	sub	rax, rdx		; no dec rax, because it can't be on the top border
+	mul	dword [Img_bpl]		; (checked in checkUpper) 
+	add	rdi, rax
+	movzx	rax, word [baseX]
+	lea	rax, [rax + 2*rax]
+	add	rdi, rax
+	movzx	rax, word [baseX]
+	movzx	rbx, word [baseY]
         call    checkUpper
 
-	mov	rdi, rsi
-	sub	rdi, 3
-        movzx   rax, word [baseX]
-        movzx   rbx, word [baseY]
+	mov	rdi, [bitmap]
+        mov	rax, [Img_height]
+	movzx	rdx, word [baseY]
+	dec	rax
+	sub	rax, rdx
+	mul	dword [Img_bpl]
+	add	rdi, rax
+	movzx	rax, word [baseX]
+	lea	rax, [rax + 2*rax - 3]
+	add	rdi, rax
+	movzx	rax, word [baseX]
+	movzx	rbx, word [baseY]
         call    checkLeft
 
         movzx   ecx, word [markerLength]
         sub     cx, [markerWidth]
         mov     [hangingLength], cx
 
-        push    rax
-        mov     rdi, rsi
-        movzx   rax, word [markerWidth]
-        lea     rcx, [rax + 2*rax]
-        add     rdi, rcx
-        mul    	dword [Img_bpl]
-        sub     rdi, rax
-        pop     rax
+	mov	rdi, [bitmap]
+	mov	rax, [Img_height]
+	dec	rax
+	movzx	rdx, word [baseY]
+	sub	rax, rdx
+	sub	rax, [markerWidth]
+	mul	dword [Img_bpl]
+	add	rdi, rax
+	movzx	rax, word [baseX]
+	add	rax, [markerWidth]
+	lea	rax, [rax + 2*rax]
+	add	rdi, rax
 
         movzx   rax, word [baseX]
         add     rax, [markerWidth]
@@ -425,7 +420,7 @@ checkLeft:
         and     rdx, 0x0000000000FFFFFF
         jz      endCheck
 
-        inc     bx
+        inc     rbx
 
 	mov	rdi, [bitmap]
 	push	rax
@@ -435,16 +430,26 @@ checkLeft:
 	mul	dword [Img_bpl]
 	add	rdi, rax
 	pop	rax
-	lea	rcx, [rax + 2*rax]
+	lea	rcx, [rax + 2*rax - 3]
 	add	rdi, rcx
 
         jmp     checkLeft
 
 checkBottom:
-        cmp	ebx, [Img_height]
-	je	returnCheck
+push	rax
+mov	rax, [bitmap]
+call	printDecimal
+call	printSpace
+mov	rax, rdi
+call	printDecimal
+call	printSpace
+mov	rax, rsi
+call	printDecimal
+call	printNewline
+pop	rax
 
-        mov	rdx, rax
+	xor	rdx, rdx
+        mov	dx, ax
         sub     dx, cx
         cmp     dx, [hangingLength]
         je      returnCheck
@@ -453,7 +458,7 @@ checkBottom:
         and     rdx, 0x0000000000FFFFFF
         jz      endCheck
 
-        inc     ax
+        inc     rax
         add     rdi, 3
         jmp     checkBottom
 
